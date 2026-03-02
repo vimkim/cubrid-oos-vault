@@ -713,6 +713,7 @@ heap_delete()
 - `spage_delete` → `total_free` 증가
 - `spage_compact` → 흩어진 free space를 하나로 합침
 - OOS도 slotted page이므로 동일하게 적용 가능
+- 시점은 미정 → UPDATE 시마다? VACUUM 에서?
 
 ### Across-page Compaction (페이지 간 정리) ✗
 
@@ -729,6 +730,10 @@ heap_delete()
 
 ## Milestone 1 요약
 
+> **전략**: 먼저 정확하게 동작하는 것을 만들고, 최적화는 이후에 진행
+> 목표: OOS user scenario + test_sql 통과 검증
+
+
 | 구현 완료 ✓                            | 제외 (향후) ✗            |
 | -------------------------------------- | ------------------------ |
 | FILE_OOS / PAGE_OOS 타입 도입          | `oos_file_destroy`       |
@@ -741,7 +746,31 @@ heap_delete()
 
 <br>
 
-> **전략**: 먼저 정확하게 동작하는 것을 만들고, 최적화는 이후에 진행
+---
+
+## Milestone 2 이후 고려 사항
+
+목표: milestone 1에서 구현하지 못한 부분을 보완, develop branch 머지
+
+
+| 개선 아이디어                            | 설명                                   |
+| ---------------------------------------- | -------------------------------------- |
+| Best Page 정책 개선                       | 여러 페이지 관리, 크기별 분류, locality 최적화 등 |
+| Compaction 정책 개선                      | in-page compaction |
+| drop table 지원 | 현재 OOS page 회수 안됨 |
+
+
+---
+
+## Milestone 3
+
+목표: 성능 개선
+
+| 개선 아이디어                            | 설명                                   |
+| ---------------------------------------- | -------------------------------------- |
+| Across-page compaction                     | 여러 페이지에 흩어진 OOS 레코드를 한 페이지로 모으는 기능 |
+| Update 시 OOS OID 재사용 | OOS 값이 안 바뀌었는데도 새 OID 발급 → 기존 OID 재사용으로 최적화 |
+
 
 ---
 
@@ -754,9 +783,6 @@ heap_delete()
 **참고 자료:**
 
 - JIRA: `CBRD-26517`
-- 코드: `src/storage/oos_file.cpp`
-- 코드: `src/storage/heap_file.c`
-- 코드: `object_representation.h`
 
 ---
 
@@ -766,13 +792,11 @@ heap_delete()
 → 기존 CUBRID OID 구조(volid 2B + pageid 4B + slotid 2B = 8B)를 그대로 활용
 
 **Q. 고정 길이 컬럼은 왜 OOS 대상이 아닌가?**
-→ INT(4B), BIGINT(8B) 등 크기가 작고 예측 가능. 512B 임계치를 넘을 수 없음
+→ INT(4B), BIGINT(8B) 등 크기가 작고 예측 가능. 512B 임계치를 넘을 수 없음. CHAR 는 예외
 
 **Q. SELECT \* 할 때 성능이 오히려 나빠지지 않나?**
-→ 맞음. OOS resolve + 추가 page 접근 필요. OOS는 **필요한 컬럼만 읽는** 쿼리 패턴에서 이득
+→ 맞음. 여러 OOS resolve + 추가 page 접근 필요. OOS는 **필요한 컬럼만 읽는** 쿼리 패턴에서 이득
 
 **Q. UPDATE 시 OOS 값이 안 바뀌었는데 왜 새로 만드는가?**
 → Milestone 1의 의도적 단순화. "하나의 OOS OID = 하나의 record" 불변식 유지
 
-**Q. PEEK 모드가 왜 안 되는가?**
-→ OOS resolve 시 레코드 크기가 바뀌므로 원본 포인터를 반환 불가. 항상 COPY 필요
