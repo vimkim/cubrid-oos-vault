@@ -449,9 +449,6 @@ heap_get() / scan
 
 <br>
 
-- ⚠ **PEEK 모드 미지원** — 항상 COPY 방식
-- ⚠ `S_DOESNT_FIT` 반환 가능 → caller 처리 필요
-
 ---
 
 ## UPDATE 동작 (Milestone 1)
@@ -462,7 +459,7 @@ heap_get() / scan
    → resolve된 전체 값을 **undo log에 기록**
    → ⚠ **undo log에는 OOS OID가 절대 남지 않음!**
 
-2. 기존 OOS 레코드 **physical delete** (`oos_delete`)
+2. (마일스톤2 예정) 기존 OOS 레코드 **physical delete** (`oos_delete`)
    → `spage_delete` → 공간 즉시 확보
 
 3. 새 record에 대해 OOS 후보 결정
@@ -525,51 +522,11 @@ heap_delete()
 
 ---
 
-<!-- _class: lead -->
-
 # 7. 로깅과 복구
 
 ---
 
-## WAL 로깅 원칙
-
-모든 OOS insert / delete는 WAL에 기록됨
-
-| 연산       | WAL 내용                                    |
-| ---------- | ------------------------------------------- |
-| **INSERT** | heap insert 로그 + OOS insert 로그          |
-| **UPDATE** | undo: **resolve된 실제 값** (OOS OID 없음!) |
-|            | redo: 새 OOS OID 포함 record                |
-|            | + OOS insert 로그 + OOS delete 로그         |
-| **DELETE** | MVCC delete ID 추가 로그만                  |
-|            | (OOS 건드리지 않으므로 OOS 로그 없음)       |
-
-<br>
-
-### 핵심 불변식
-
-> **"undo log에는 OOS OID가 절대 존재하지 않는다"**
-
----
-
-## Crash Recovery
-
-**REDO (커밋된 트랜잭션):**
-
-- WAL을 순방향으로 재생
-- heap insert/update redo + OOS insert redo
-- 커밋된 OOS 데이터 복원
-
-**UNDO (미커밋 트랜잭션):**
-
-- WAL을 역방향으로 재생
-- undo log에 **resolve된 실제 값**이 있으므로 그대로 이전 상태 복원
-- 부분 생성된 새 OOS 레코드 정리
-
-<br>
-
-> **핵심**: undo log에 OOS OID가 없기 때문에
-> "이미 삭제된 OOS를 다시 읽어야 하는" 문제가 없음
+생략
 
 ---
 
@@ -595,23 +552,11 @@ heap_delete()
 
 ---
 
-<!-- _class: lead -->
-
 # 8. Replication
 
 ---
 
-## 복제 동작
-
-**원칙: replication log가 OOS 연산을 재현할 수 있어야 함**
-
-| 연산       | 복제 내용                                      |
-| ---------- | ---------------------------------------------- |
-| **INSERT** | OOS insert + heap insert 모두 복제 로그에 포함 |
-| **UPDATE** | undo (resolve된 값) + redo (새 OOS OID) 포함   |
-| **DELETE** | MVCC delete ID만 복제 (OOS 건드리지 않음)      |
-
-<br>
+생략
 
 ### 주의사항
 
@@ -621,7 +566,6 @@ heap_delete()
 > → OID 동등성은 보장하지 않음
 
 ---
-
 <!-- _class: lead -->
 
 # 9. OOS의 고민거리
