@@ -376,3 +376,204 @@ INSERT 시 `total_space = record_size + slot_overhead + unfill_space`로 계산�
 ## 11. 요약
 
 CUBRID의 Bestspace 알고리즘은 **3단계 힌트 계층**(인메모리 해시 → best[10] 디스크 배열 → second_best[10] 샘플링 배열)과 **제한적 스캔을 통한 힌트 재충전**(sync_bestspace)을 결합하여, 전체 힙 파일을 순차 탐색하지 않으면서도 빈 공간이 있는 페이지를 빠르게 찾아내는 구조다. Zero-wait locking과 비로깅 통계를 통해 동시성을 최우선으로 설계되었으며, 정확성보다는 **"대부분의 경우 충분히 좋은 페이지를 빨리 찾는 것"**에 최적화되어 있다.
+
+---
+
+Q. 단점은 무엇인가요?
+
+## 논문 기반 여부
+
+**특정 논문에 기반하지 않았다.** 코드에 논문 인용이 전혀 없고(grep 결과 zero), 2008년 Search Solution Corporation이 초기 오픈소스로 공개할 때부터 존재하던 자체 엔지니어링 구현이다.
+
+데이터베이스 교과서(Ramakrishnan, Garcia-Molina 등)에서 다루는 heap file 공간 관리의 일반적 접근법 3가지와 비교하면:
+
+| 접근법 | 대표 구현 | CUBRID |
+|--------|-----------|--------|
+| **Free List** — 빈 공간 있는 페이지를 연결 리스트로 관리 | Oracle (traditional freelists) | ✗ |
+| **Free Space Map (FSM)** — 전 페이지의 여유 공간을 트리/비트맵으로 관리 | **PostgreSQL** | ✗ |
+| **Directory-based** — 페이지 그룹별 공간 요약 디렉토리 | Oracle ASSM (bitmapped) | ✗ |
+| **Hint-based cache** — 소수의 "좋은 페이지" 힌트를 캐시 | **CUBRID (이것)** | ✓ |
+
+CUBRID의 접근은 위 세 가지 정석 어디에도 정확히 속하지 않는 **ad-hoc 힌트 캐시**다. 학술적 기반 없이, "소수의 힌트만 유지하면서 필요할 때 부분 스캔으로 보충하자"는 실용적 판단으로 만들어진 것이다.
+
+---
+
+## 단점 분석 (PostgreSQL FSM과 비교 중심)
+
+### 비교 대상: PostgreSQL의 Free Space Map
+
+PostgreSQL은 **모든 페이지**의 여유 공간을 1바이트(256단계)로 추적하는 FSM 트리를 유지한다:
+
+```
+PostgreSQL FSM (max-heap 트리):
+        [max free across all pages]
+       /                           \
+  [max in left half]         [max in right half]
+   /        \                  /        \
+ [pg0-3]  [pg4-7]          [pg8-11]  [pg12-15]
+  ...      ...               ...       ...
+
+→ O(log N) 탐색으로 needed_space를 만족하는 페이지를 정확히 찾음
+→ 모든 페이지 커버, 추정이 아닌 실측
+```
+
+CUBRID Bestspace:
+```
+해시 테이블(일부 페이지) + best[10] + second_best[10]
+
+→ 전체 페이지 중 극소수만 추적
+→ 나머지는 "어딘가에 있을 것" (num_other_high_best)이라는 추정
+```
+
+### 단점 1: 커버리지 부재 — 10개로 수만 페이지를 대표
+
+| 힙 크기 | best[] 커버리지 | PostgreSQL FSM 커버리지 |
+|---------|----------------|----------------------|
+| 100 페이지 | 10% | **100%** |
+| 10,000 페이지 | 0.1% | **100%** |
+| 1,000,000 페이지 | 0.001% | **100%** |
+
+`best[10]`과 `second_best[10]`이 모두 소진되면 `sync_bestspace`가 최대 100페이지만 스캔한다. 100만 페이지 힙에서 빈 공간이 101번째 이후에 있으면 찾지 못하고 **새 페이지를 할당**한다. 실제로 빈 공간이 충분해도 파일이 불필요하게 커진다.
+
+### 단점 2: 전역 뮤텍스 병목
+
+```c
+// 모든 힙 파일의 모든 INSERT가 이 하나의 뮤텍스를 경쟁
+pthread_mutex_lock(&heap_Bestspace->bestspace_mutex);
+```
+
+테이블 A에 INSERT하는 스레드와 테이블 B에 INSERT하는 스레드가 **같은 뮤텍스**를 잡는다. 동시 INSERT 워크로드에서 CPU 코어 수가 늘어날수록 직렬화 지점이 된다. PostgreSQL FSM은 per-relation 구조이므로 테이블 간 경합이 없다.
+
+### 단점 3: Sync의 예측 불가능한 지연
+
+```c
+// INSERT 도중 갑자기 100페이지 I/O가 발생할 수 있음
+max_iterations = MIN(num_pages * 0.2, 100);
+```
+
+best[] 힌트가 소진되면 INSERT 트랜잭션이 **자기 비용으로** sync 스캔을 수행한다. 이는:
+- 최대 100페이지 READ I/O → 수 밀리초~수십 밀리초 지연
+- 다른 INSERT는 이 혜택을 공짜로 받음 (불공평)
+- 지연 시점이 예측 불가능 → 꼬리 지연(tail latency) 발생
+
+PostgreSQL은 FSM을 VACUUM이 비동기로 갱신하므로 INSERT 경로에 스캔이 끼지 않는다.
+
+### 단점 4: 크래시 후 힌트 전멸
+
+```c
+// best[] 변경은 WAL에 기록되지 않음
+log_skip_logging(thread_p, &addr);
+```
+
+서버 크래시 후 재기동하면:
+- 인메모리 해시 테이블: 완전 소실
+- best[10]: 크래시 시점의 디스크 상태 (오래된 값)
+- 실질적으로 모든 힌트가 무효 → 첫 INSERT마다 sync 발생
+
+PostgreSQL FSM도 크래시 후 부정확하지만, VACUUM이 백그라운드에서 빠르게 재구성한다. CUBRID는 INSERT가 자력으로 복구해야 한다.
+
+### 단점 5: Best-fit 최적화 없음
+
+CUBRID는 `freespace >= needed_space`인 **첫 번째** 후보를 사용한다 (first-fit).
+
+```
+예: 페이지 A(여유 8000B), 페이지 B(여유 200B), 삽입 150B
+→ 해시에서 A를 먼저 찾으면 A에 삽입 (7850B 낭비)
+→ B에 넣는 게 공간 효율적이지만 그런 판단 없음
+```
+
+PostgreSQL FSM은 256단계로 공간을 분류하여 **적절한 크기의 페이지**를 찾을 수 있다. CUBRID는 분류 자체가 없으므로 내부 단편화가 더 심하다.
+
+### 단점 6: Heap Bloat 가속
+
+위 단점들의 복합 효과:
+
+```
+DELETE로 공간 발생
+  → best[10]이 이미 차있으면 second_best에 1/1000 확률로만 기록
+  → 나머지는 num_other_high_best 카운터만 증가
+  → INSERT 시 best[10] 소진 → sync가 100페이지만 스캔
+  → 못 찾으면 새 페이지 할당
+  → 빈 공간은 계속 존재하지만 파일만 커짐
+```
+
+PostgreSQL은 모든 페이지의 여유를 추적하므로 DELETE 후 빈 공간을 즉시 재활용한다.
+
+### 단점 7: 통계 정확도 누적 열화
+
+`num_other_high_best`는 "best[] 밖에 여유 있는 페이지 수"의 **추정치**인데, 이것이 sync 트리거 조건(`≥ 10%`)에 직접 사용된다:
+
+```c
+other_high_best_ratio = num_other_high_best / num_pages;
+if (try_find >= 2 || other_high_best_ratio < HEAP_BESTSPACE_SYNC_THRESHOLD)
+  break;  // sync 안 함 → 바로 새 페이지 할당
+```
+
+이 카운터는 증가만 하고 정확하게 감소하지 않으므로 (부분 스캔 시 보수적 감소), 시간이 지나면 **과대 추정**(쓸데없이 sync 반복) 또는 **과소 추정**(sync 안 해서 새 페이지 낭비) 양쪽 모두 발생할 수 있다.
+
+---
+
+### 요약: 근본적 한계
+
+| 문제 | 원인 | 정석 해법 (참고) |
+|------|------|----------------|
+| 커버리지 부족 | 고정 크기 10 배열 | 전 페이지 FSM (PostgreSQL) |
+| 전역 경합 | 단일 뮤텍스 | Per-relation 구조 |
+| INSERT 경로 지연 | Sync가 INSERT에서 수행 | 백그라운드 비동기 갱신 (VACUUM) |
+| 크래시 복구 | 비로깅 | FSM 페이지도 WAL 대상, 또는 백그라운드 재구축 |
+| 공간 낭비 | First-fit only | 공간 크기별 분류 (256-category FSM) |
+| Heap bloat | 위 모든 것의 복합 | 정확한 공간 추적 + 적극적 재활용 |
+
+결론적으로, 이 알고리즘은 **"힌트가 맞을 때는 매우 빠르지만, 틀릴 때의 복구 비용이 크고 장기 운영 시 공간 효율이 떨어지는"** 구조다. 구현 복잡도를 낮추는 대신 정확성과 확장성을 희생한 트레이드오프라고 볼 수 있다.
+
+---
+
+Q. 여러개의 테이블이 같은 힙 페이지를 공유할 수 있나요?
+
+아니오. **하나의 heap page는 반드시 하나의 테이블에만 속한다.**
+
+근거는 이미 읽은 코드에 있다:
+
+```c
+// heap_file.c:269 — 모든 힙 페이지 헤더에 박혀있는 구조
+struct heap_chain {
+  OID class_oid;      // ← 이 페이지를 소유하는 테이블(클래스)
+  VPID prev_vpid;     // 같은 힙 파일 내 이전 페이지
+  VPID next_vpid;     // 같은 힙 파일 내 다음 페이지
+  ...
+};
+```
+
+구조가 이렇다:
+
+```
+Table A (HFID_A)          Table B (HFID_B)
+┌──────────────┐          ┌──────────────┐
+│ Header Page  │          │ Header Page  │
+│ class_oid=A  │          │ class_oid=B  │
+│ best[10]     │          │ best[10]     │
+└──────┬───────┘          └──────┬───────┘
+       │                         │
+   ┌───▼───┐ ┌───────┐     ┌───▼───┐ ┌───────┐
+   │Page 2 │→│Page 3 │→…   │Page 2 │→│Page 3 │→…
+   │oid=A  │ │oid=A  │     │oid=B  │ │oid=B  │
+   └───────┘ └───────┘     └───────┘ └───────┘
+
+   ← 완전히 별개의 페이지 체인, 절대 섞이지 않음 →
+```
+
+내 보고서에서 전역 뮤텍스를 병목으로 지적한 이유를 명확히 하면 — **페이지가 공유되는 게 아니라, 힌트 캐시의 자료구조가 공유**되는 것이다:
+
+```c
+// 전역 인메모리 캐시 — 모든 테이블의 힌트가 한 해시 테이블에 혼재
+heap_Bestspace->hfid_ht   // Table A 힌트도 여기, Table B 힌트도 여기
+heap_Bestspace->vpid_ht   // 같은 구조에 모든 테이블 섞여있음
+heap_Bestspace->bestspace_mutex  // ← 이 하나의 락을 모두가 경쟁
+```
+
+Table A INSERT → `mutex lock` → hfid_ht에서 HFID_A로 조회 → `mutex unlock`
+Table B INSERT → `mutex lock` → hfid_ht에서 HFID_B로 조회 → `mutex unlock`
+
+페이지 데이터 자체는 테이블별 격리지만, **"어떤 페이지에 빈 공간이 있는지" 찾는 캐시 조회** 단계에서 모든 테이블이 같은 뮤텍스를 거친다. 이게 병목 포인트다.
+
+
