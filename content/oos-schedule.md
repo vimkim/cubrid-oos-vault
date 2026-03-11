@@ -2,7 +2,11 @@
 
 ## Milestone 2 개발 일정 및 R&R
 
-**목표**: M1 미구현 부분 보완 + develop branch 머지
+**목표**:
+M1 미구현 부분 보완 + develop branch 머지
+
+자세한 구글 스프레드 시트:
+https://docs.google.com/spreadsheets/d/1TFliVYNDg2TrQUEKaSkzCTK2yNg-NKil59oiomPeUgE/edit?usp=sharing
 
 ### 항목 및 R&R
 
