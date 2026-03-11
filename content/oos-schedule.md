@@ -1,4 +1,4 @@
-# OOS WBS Plan
+# OOS Schedule
 
 ## Milestone 2 개발 일정 및 R&R
 
@@ -38,6 +38,7 @@
 |------|------|------|
 | OOS OID 재사용 — heap/OOS 레이어 구현 | 대현 | 값 변경 없을 때 기존 OID 재사용 로직 |
 | OOS OID 재사용 — log/recovery/replication/vacuum 연동 | 희수 | undo/redo 설계, crash recovery, replication OID 불일치 처리, orphan OOS vacuum 처리 |
+| OOS replace 구분 | 대현 | 현재 무조건적으로 heap scan 시 record 에 OOS OID가 있으면 OOS RECDES로 변하게 하는 이슈가 있음. 이를 unloaddb 에서 locator_fetch_all 할때만 지원하도록 예외 처리 |
 
 ### 주별 일정 (4/20 – 5/29)
 
@@ -59,7 +60,14 @@
 
 | 항목 | 담당 | 비고 |
 |------|------|------|
-| Vacuum ↔ OOS 연동 | 희수 | DELETE된 OOS의 vacuum 처리 (동기 vs 전용 job 결정 포함) |
-| OOS Ordered Fix | 대현 | 여러 OOS page fix/unfix 순서 보장, 데드락 방지 |
+| 유틸리티, 모니터링 툴 지원 | 대현 | 운영에 도움을 주는 디버깅 |
+
+
+## 추후 Develop (일정 미정)
+
+**목표**: 안정성 강화 및 잔여 개선
+
+| 항목 | 담당 | 비고 |
+|------|------|------|
 | Across-page compaction | 대현 | 반쯤 빈 페이지들 합치기 |
 | Bestspace 전역 구조체 개선 | 대현 | 전역 구조체 제거 방향 검토 |
