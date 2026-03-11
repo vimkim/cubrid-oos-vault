@@ -1,0 +1,65 @@
+# OOS WBS Plan
+
+## Milestone 2 개발 일정 및 R&R
+
+**목표**: M1 미구현 부분 보완 + develop branch 머지
+
+### 항목 및 R&R
+
+| 항목 | 담당 | 비고 |
+|------|------|------|
+| Best Page 정책 개선 | 대현 | 여러 후보 페이지 관리, 크기별 분류, locality 최적화 |
+| In-page Compaction | 대현 | spage_compact 활용, 수행 시점 결정 |
+| Drop Table 지원 (`oos_file_destroy`) | 희수 | WAL 로깅 + recovery 연동 포함 |
+
+### 주별 일정 (3/10 – 4/17)
+
+| 주차 | 기간 | 대현 | 희수 |
+|------|------|------|------|
+| M1 마무리 | 3/10 – 3/13 | M1 마무리 | M1 마무리 |
+| 1주차 | 3/16 – 3/20 | `oos_file_destroy` API 구현 (3/16-3/18) · Best Page 설계 (3/19-3/20) | Manual test 보고 (3/16-3/18) · Drop Table 설계 (3/19-3/20) |
+| 2주차 | 3/23 – 3/27 | `static oos_bestspace()` 구현 | Drop Table 구현 (WAL 로깅 포함) |
+| 3주차 | 3/30 – 4/3 | `static oos_compact()` 구현 · In-page compaction 마무리 | Recovery 연동 구현 |
+| 4주차 | 4/6 – 4/7 | 단위 테스트 · 버그 수정 | Drop Table 검증 준비 |
+| *플레이샵* | *4/8 – 4/11* | *(휴무)* | *(휴무)* |
+| 5주차 | 4/13 – 4/17 | 통합 테스트 · 머지 PR | 통합 테스트 · 머지 PR |
+
+**M2 완료 목표: 4/17**
+
+---
+
+## Milestone 3 개괄 (5월 말 완료 목표)
+
+**목표**: Update 시 OOS OID 재사용 (성능 개선)
+
+### 항목 및 R&R
+
+| 항목 | 담당 | 비고 |
+|------|------|------|
+| OOS OID 재사용 — heap/OOS 레이어 구현 | 대현 | 값 변경 없을 때 기존 OID 재사용 로직 |
+| OOS OID 재사용 — log/recovery/replication/vacuum 연동 | 희수 | undo/redo 설계, crash recovery, replication OID 불일치 처리, orphan OOS vacuum 처리 |
+
+### 주별 일정 (4/20 – 5/29)
+
+| 주차 | 기간 | 대현 | 희수 |
+|------|------|------|------|
+| 1주차 | 4/20 – 4/24 | OOS OID 재사용 설계 (공동) | OOS OID 재사용 설계 (공동) |
+| 2주차 | 4/27 – 5/1 | heap/OOS 레이어 구현 시작 | log 연동 설계 · undo/redo 구현 |
+| 3주차 | 5/6 – 5/13 *(5/4-5/5 연휴 제외)* | 구현 계속 | recovery 연동 구현 |
+| 4주차 | 5/14 – 5/22 | 구현 마무리 · 단위 테스트 | replication · vacuum 연동 구현 |
+| 5주차 | 5/26 – 5/29 *(5/25 부처님 오신날 제외)* | 통합 테스트 · 버그 수정 | 통합 테스트 · 버그 수정 |
+
+**M3 완료 목표: 5/29**
+
+---
+
+## Milestone 4 개괄 (일정 미정)
+
+**목표**: 안정성 강화 및 잔여 개선
+
+| 항목 | 담당 | 비고 |
+|------|------|------|
+| Vacuum ↔ OOS 연동 | 희수 | DELETE된 OOS의 vacuum 처리 (동기 vs 전용 job 결정 포함) |
+| OOS Ordered Fix | 대현 | 여러 OOS page fix/unfix 순서 보장, 데드락 방지 |
+| Across-page compaction | 대현 | 반쯤 빈 페이지들 합치기 |
+| Bestspace 전역 구조체 개선 | 대현 | 전역 구조체 제거 방향 검토 |
