@@ -264,6 +264,16 @@ When writing about OOS, explicitly call out these limitations — readers must u
 
 ## Content Writing Guidelines
 
+### Inline Code Adjacent to Korean
+
+When inline code (`` `xxx` ``) is immediately adjacent to Korean characters, always add a space between them. This is required because pandoc's Jira conversion renders `` `xxx` `` as `{{xxx}}`, and Jira's `{{...}}` monospace markup does not render correctly when directly touching Korean text.
+
+- ❌ `` `oos_read`는 `` → ✅ `` `oos_read` 는 ``
+- ❌ `` `unloaddb`에서 `` → ✅ `` `unloaddb` 에서 ``
+- ❌ `한국어`code `` → ✅ `한국어` `code`
+
+Apply this rule to all `.md` files in `content/`.
+
 ### Language & Format
 
 - Write in **Korean** (all existing content is Korean)
