@@ -65,6 +65,7 @@ https://docs.google.com/spreadsheets/d/1TFliVYNDg2TrQUEKaSkzCTK2yNg-NKil59oiomPe
 | 항목 | 담당 | 비고 |
 |------|------|------|
 | 유틸리티, 모니터링 툴 지원 | 대현 | 운영에 도움을 주는 디버깅 |
+| OOS ordered fix 필요성 | 대현 | 두 트랜잭션이 다른 순서로 서로 다른 OOS page 에 접근할 경우, dead lock 발생 가능성이 있음. Known bug 처리 |
 
 
 ## 추후 Develop (일정 미정)
