@@ -200,14 +200,8 @@ oos_delete라는 physical delete API가 있다. oos_delete는 내부적으로 sp
 
 #### Q. OOS OID (1|1|33) 은 언제 physical delete 되는가?
 
-두 가지 선택지가 있다.
 1. update 이전 버전 heap record가 undo log에 남아서, MVCC를 통해 다시 접근될 수 있으니 남겨놓는다. 
-	추후 heap record의 MVCCID가 min active snapshot 보다 작아서 더 이상 접근 불가능해질 경우, 언젠가 vacuum이 해당 record를 vacuum_heap 함수에서 physical spage_delete, spage_vacuum을 통해 정리할 것이다. 이때 oos_delete 를 같이 수행한다. 이 방법도 두가지로 나뉘는데, 추후 milestone에서 고려한다.
-		1-1. heap record를 정리할 때 동기적으로 즉시 수행하는 방법
-		1-2. oos delete 만을 위한 vacuum job을 만드는 방법
-2. heap record update가 되는 즉시 oos_delete 를 수행하고, OOS OID 대신 OOS value를 전부 heap recdes에 채워 넣어서 undo log로 보낸다. 
-
-26년 2월 5일 회의를 통해 Milestone 1은 2번 방식으로 구현하기로 합의함.
+	추후 heap record의 MVCCID가 min active snapshot 보다 작아서 더 이상 접근 불가능해질 경우, 언젠가 vacuum이 해당 record를 vacuum_heap 함수에서 physical spage_delete, spage_vacuum을 통해 정리할 것이다. 이때 oos_delete 를 같이 수행한다.
 
 ---
 
@@ -217,7 +211,7 @@ oos_delete라는 physical delete API가 있다. oos_delete는 내부적으로 sp
 
 Undo log를 생성하는 대신, 단순히 Record를 Heap에 남겨두고 Del id만을 남겨서, 볼 수 있는 트랜잭션들은 Heap에서 즉시 보게 하고, 신규 트랜잭션들은 Del id에 막혀 레코드를 볼 수 없게 하는 기본적인 MVCC 구현이다. 
 
-이때 LOG RECDES 형태로 OOS OID가 값으로 resolve되어 undo log 로 보내지는 update 연산과 달리, 삭제된 레코드들은 여전히 heap file에 남아있으므로, heap file의 크기 제한 (approx. 16KB) 때문에 OOS OID들이 값으로 변화할 수 없다. (억지로 resolve하면 overflow file를 사용해야만 한다.)
+update 연산에서는 이전 OOS 레코드를 즉시 oos_delete하고 undo log에는 이전 heap record(OOS OID 포함)를 그대로 기록하는 반면, 삭제된 레코드들은 여전히 heap file에 남아있으므로 OOS OID도 그대로 남아있다.
 
 따라서 OOS OID들을 oos_delete 하지 못하고 남겨둬야 한다. 이 때문에 결국 vacuum에게 oos_delete를 언젠가 지워야 한다는 사실을 알려 주어야 한다. 이는 추후 Milestone에서 다룬다.
 
