@@ -176,7 +176,7 @@ insert into tbl (1, REPEAT('a', 1700), REPEAT('b', 400));
 [ mvcc header | VOT | 1 | (OOS OID to vc1 (1|1|33)) | 'bbbbb.....' ]
 ```
 
- > 예시에서 OOS OID는 volid = 1, fileid = 1, slotid = 33 를 가짐
+ > 예시에서 OOS OID는 volid = 1, pageid = 1, slotid = 33 를 가짐
 
 위 recdes를 아래와 같이 update 하면
 
@@ -232,11 +232,11 @@ update 연산에서는 이전 OOS 레코드를 즉시 oos_delete하고 undo log�
 // object_representation.h
 #define OR_VAR_BIT_OOS 0x1
 #define OR_VAR_BIT_RESERVED 0x2
-#define OR_VAR_FALG_MASK 0x3
+#define OR_VAR_FLAG_MASK 0x3
 
 #define OR_SET_VAR_OOS(length) ((int) (length) | OR_VAR_BIT_OOS)
-#define OR_GET_VAR_FLAG(length) ((int) (length) & OR_VAR_FALG_MASK)
-#define OR_GET_VAR_LENGTH(length) ((int) (length) & (~OR_VAR_FALG_MASK))
+#define OR_GET_VAR_FLAG(length) ((int) (length) & OR_VAR_FLAG_MASK)
+#define OR_GET_VAR_LENGTH(length) ((int) (length) & (~OR_VAR_FLAG_MASK))
 #define OR_IS_OOS(length) (OR_GET_VAR_FLAG (length) & OR_VAR_BIT_OOS)
 ```
 

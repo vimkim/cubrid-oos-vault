@@ -35,12 +35,13 @@ Heap Record: [MVCC header] [VOT] [Fixed columns] [Variable area (values or OOS O
 `heap_get()` → check `OR_MVCC_FLAG_HAS_OOS` → `heap_record_replace_oos_oids_with_values_if_exists()` → per IS_OOS column: `oos_read()` → reconstruct full record
 
 ### UPDATE (Always New OID)
-1. Resolve all OOS OIDs in old record → embed in undo log (never OOS OIDs in undo!)
-2. `oos_delete()` for each old OOS OID (immediate physical delete)
-3. `oos_insert()` for new OOS columns → new OOS OIDs
-4. Write updated heap record with new OOS OIDs
+1. `oos_insert()` for new OOS columns → new OOS OIDs
+2. Write updated heap record with new OOS OIDs
+3. Old heap record (with old OOS OIDs) saved to undo log as-is
+4. Old OOS records remain — old transactions may still access them via MVCC undo
+5. When vacuum removes the old heap record, `oos_delete()` cleans up old OOS records together
 
-**Invariant**: One OOS OID is referenced by exactly one record.
+**Invariant**: One OOS OID is referenced by exactly one record (heap page or undo log).
 
 ### DELETE
 Add MVCC delete ID. OOS OIDs remain in heap record (NOT resolved, NOT deleted). Vacuum handles cleanup later.
@@ -53,8 +54,8 @@ Add MVCC delete ID. OOS OIDs remain in heap record (NOT resolved, NOT deleted). 
 
 ## Recovery & Replication Invariants
 1. Every OOS insert/delete is WAL-logged; crash recovery restores OOS state
-2. Update undo log contains fully-resolved OOS values (no OOS OIDs in undo)
-3. Old OOS records deleted before new ones created on update
+2. Update undo log retains OOS OIDs as-is (old OOS records must stay alive for MVCC readers)
+3. Old OOS records are deleted by vacuum together with the old heap record, not during update
 4. Deleted records retain OOS OIDs until vacuum reclaims them
 5. Replication log has sufficient info to replay on replica
 6. Each heap file has at most 1 OOS file; VFID stored in heap header

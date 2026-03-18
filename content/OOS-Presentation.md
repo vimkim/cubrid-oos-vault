@@ -445,25 +445,22 @@ heap_get() / scan
 
 ## UPDATE 동작 (Milestone 1)
 
-**4단계 프로세스:**
+**3단계 프로세스:**
 
-1. 기존 record의 모든 OOS OID를 **실제 값으로 resolve**
-   → resolve된 전체 값을 **undo log에 기록**
-   → ⚠ **undo log에는 OOS OID가 절대 남지 않음!**
-
-2. (마일스톤2 예정) 기존 OOS 레코드 **physical delete** (`oos_delete`)
-   → `spage_delete` → 공간 즉시 확보
-
-3. 새 record에 대해 OOS 후보 결정
+1. 새 record에 대해 OOS 후보 결정
    → `oos_insert()` → **새 OOS OID 발급**
 
-4. 새 heap record 작성 (새 OOS OID 포함)
+2. 새 heap record 작성 (새 OOS OID 포함)
+   → 이전 heap record (OOS OID 포함)는 **undo log에 그대로 저장**
+
+3. 이전 OOS 레코드는 **삭제하지 않음** (MVCC로 접근 가능)
+   → 이후 vacuum이 이전 heap record 정리 시 `oos_delete` 로 함께 삭제
 
 <br>
 
 > **핵심**: OOS 값이 안 바뀌어도 항상 새 OOS OID 발급
 > → Milestone 1의 의도적 단순화
-> → **하나의 OOS OID는 오직 하나의 record만 참조**
+> → **하나의 OOS OID는 오직 하나의 record만 참조** (heap page 또는 undo log)
 
 ---
 
@@ -476,17 +473,16 @@ Before UPDATE:
 
 UPDATE tbl SET vc2 = 'hello' WHERE id = 1;
 
-Step 1: resolve → undo log에 전체 값 기록
-  undo log: [ ... | 'aaaa...(1700B)' | 'bbbbb' ]   ← OOS OID 아닌 실제 값!
-
-Step 2: oos_delete (1|1|33)
-  OOS page 1, slot 33: [삭제됨]
-
-Step 3: oos_insert → 새 OOS OID
+Step 1: oos_insert → 새 OOS OID
   OOS page 2, slot 44: 'aaaa...(1700B)'             ← 새로 삽입
 
-Step 4: heap record 갱신
+Step 2: heap record 갱신
   heap: [ ... | OOS OID (1|2|44) | 'hello' ]
+  undo log: [ ... | OOS OID (1|1|33) | 'bbbbb' ]    ← OOS OID 그대로 유지
+
+Step 3: 이전 OOS 레코드는 유지
+  OOS page 1, slot 33: 'aaaa...(1700B)'              ← MVCC용으로 남겨둠
+  → 추후 vacuum이 undo log의 이전 heap record 정리 시 함께 oos_delete
 ```
 
 ---
