@@ -1,5 +1,7 @@
 # page_buffer_fix_trace.md 학습 질문
 
+답변: [[page_buffer_fix_trace-answers]]
+
 아래 질문들은 CUBRID 버퍼 풀의 `pgbuf_fix()` 아키텍처를 깊이 있게 이해하기 위한 학습용 질문입니다. 기초(1-5번), 중급(6-13번), 심화(14-20번) 순으로 구성되어 있습니다.
 
 ---

@@ -1,5 +1,7 @@
 # page_buffer_qa.md 학습 질문
 
+답변: [[page_buffer_qa-answers]]
+
 아래 질문들은 CUBRID page buffer 내부 구조를 깊이 이해하기 위한 아키텍처 학습용 질문입니다.
 
 ---

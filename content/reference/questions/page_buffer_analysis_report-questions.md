@@ -1,5 +1,7 @@
 # page_buffer_analysis_report.md 학습 질문
 
+답변: [[page_buffer_analysis_report-answers]]
+
 다음 질문들은 CUBRID page buffer 모듈의 아키텍처를 깊이 이해하기 위한 학습용 질문입니다. `page_buffer_analysis_report.md`를 숙독한 후 스스로 답을 구성해 보십시오.
 
 ---

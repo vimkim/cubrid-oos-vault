@@ -1,5 +1,7 @@
 # page_buffer.md 학습 질문
 
+답변: [[page_buffer-answers]]
+
 아래 질문들은 CUBRID 페이지 버퍼 매니저 `page_buffer.c/h`의 아키텍처를 깊이 이해하기 위한 학습 질문입니다.
 
 1. BCB(Buffer Control Block)의 `PGBUF_ATOMIC_LATCH` 필드가 latch mode, fix count, waiter를 64비트 단일 원자 변수에 패킹하는 이유는 무엇인가? 이 설계가 락 획득 비용을 낮추는 원리는?
